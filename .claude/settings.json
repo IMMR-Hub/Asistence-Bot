@@ -1,0 +1,47 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=process.env.CLAUDE_TOOL_INPUT_FILE_PATH||''; const critical=['app/core/','app/db/models/','app/schemas/']; const violations=critical.filter(p=>f.includes(p)); if(violations.length>0){console.error('HOOK PRE-EDIT: Editando archivo critico: '+f+'. Verificar que no viola arquitectura hexagonal ni principio plug-and-play antes de continuar.');}\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const f=process.env.CLAUDE_TOOL_INPUT_FILE_PATH||''; if(f.endsWith('.py')){console.log('POST-EDIT: Archivo Python modificado: '+f+'. Recordatorio: correr lint y tests del modulo antes de cerrar el lote.');}\""
+          }
+        ]
+      }
+    ],
+    "PreBashCommand": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const cmd=process.env.CLAUDE_BASH_COMMAND||''; const dangerous=['rm -rf','git reset --hard','git push --force','DROP TABLE','DELETE FROM','docker system prune']; const found=dangerous.find(d=>cmd.includes(d)); if(found){console.error('HOOK BASH SAFETY: Comando potencialmente destructivo detectado: '+found+'. Verificar con el usuario antes de ejecutar.');}\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)"
+    ]
+  }
+}

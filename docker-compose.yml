@@ -1,0 +1,130 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: salesbot_db
+    environment:
+      POSTGRES_USER: salesbot
+      POSTGRES_PASSWORD: salesbot_secret
+      POSTGRES_DB: salesbot_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U salesbot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - salesbot_network
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: salesbot_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - salesbot_network
+
+  # Ollama LLM
+  ollama:
+    image: ollama/ollama:latest
+    container_name: salesbot_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    restart: unless-stopped
+    networks:
+      - salesbot_network
+
+  # FastAPI Application
+  api:
+    build: .
+    container_name: salesbot_api
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://salesbot:salesbot_secret@db:5432/salesbot_db
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: development
+      DEBUG: "true"
+      API_SECRET_KEY: "salesbot-dev-key-2024"
+      # LLM Provider: groq (fast, free) or ollama (local fallback)
+      LLM_PROVIDER: "groq"
+      LLM_API_KEY: "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"
+      LLM_API_BASE: "https://api.groq.com/openai/v1"
+      LLM_CLASSIFY_MODEL: "llama-3.1-8b-instant"
+      LLM_RESPONSE_MODEL: "llama-3.1-70b-versatile"
+      LLM_TIMEOUT: "30"
+      LLM_FALLBACK_PROVIDER: "ollama"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      OLLAMA_FALLBACK_MODEL: "qwen2.5:7b-instruct"
+      # WhatsApp Twilio Sandbox (for testing)
+      WHATSAPP_PROVIDER: "twilio"
+      TWILIO_ACCOUNT_SID_OPTIONAL: "AC351010f4ba2130939eb44c50e867a6e9"
+      TWILIO_AUTH_TOKEN_OPTIONAL: "186fb27a34ace9bf0d028db6b6d30100"
+      TWILIO_WHATSAPP_NUMBER_OPTIONAL: "+1415-523-8886"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    networks:
+      - salesbot_network
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # RQ Worker
+  worker:
+    build: .
+    container_name: salesbot_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://salesbot:salesbot_secret@db:5432/salesbot_db
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_BASE_URL: http://ollama:11434
+      APP_ENV: development
+      LLM_PROVIDER: "groq"
+      LLM_API_KEY: "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"
+      LLM_API_BASE: "https://api.groq.com/openai/v1"
+      WHATSAPP_PROVIDER: "twilio"
+      TWILIO_ACCOUNT_SID_OPTIONAL: "AC351010f4ba2130939eb44c50e867a6e9"
+      TWILIO_AUTH_TOKEN_OPTIONAL: "186fb27a34ace9bf0d028db6b6d30100"
+      TWILIO_WHATSAPP_NUMBER_OPTIONAL: "+1415-523-8886"
+    volumes:
+      - .:/app
+    networks:
+      - salesbot_network
+    command: python -m app.workers.worker
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import redis; r = redis.from_url('redis://redis:6379/0'); r.ping(); print('worker healthy')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:
+
+networks:
+  salesbot_network:
+    driver: bridge

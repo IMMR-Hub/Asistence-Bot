@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "universal-sales-automation-core"
+version = "1.0.0"
+description = "Production-ready modular core for WhatsApp and email automation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Sales Automation Team", email = "dev@example.com"}
+]
+keywords = ["fastapi", "automation", "crm", "whatsapp", "email", "ollama", "multi-tenant"]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/universal-sales-automation-core"
+Documentation = "https://github.com/yourusername/universal-sales-automation-core/blob/main/README.md"
+Repository = "https://github.com/yourusername/universal-sales-automation-core.git"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["app/tests"]
+asyncio_mode = "auto"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

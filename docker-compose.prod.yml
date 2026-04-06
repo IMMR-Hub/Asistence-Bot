@@ -1,0 +1,160 @@
+# Docker Compose para PRODUCCIÓN
+# Uso: docker-compose -f docker-compose.prod.yml up -d
+# IMPORTANTE: .env.production debe existir con credenciales REALES
+
+services:
+  # ════════════════════════════════════════════════════════════════════════════
+  # PostgreSQL Database (PRODUCCIÓN)
+  # ════════════════════════════════════════════════════════════════════════════
+  db:
+    image: postgres:16-alpine
+    container_name: salesbot_db_prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-salesbot_prod}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-CHANGE_ME}
+      POSTGRES_DB: salesbot_prod
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      # Backup diario (opcional)
+      - ./backups:/backups
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U salesbot_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - salesbot_network_prod
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Redis Cache & Queue (PRODUCCIÓN)
+  # ════════════════════════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    container_name: salesbot_redis_prod
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-CHANGE_ME}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - salesbot_network_prod
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Ollama LLM (Fallback en STANDBY)
+  # ════════════════════════════════════════════════════════════════════════════
+  ollama:
+    image: ollama/ollama:latest
+    container_name: salesbot_ollama_prod
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data_prod:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      - salesbot_network_prod
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # FastAPI Application (PRODUCCIÓN)
+  # ════════════════════════════════════════════════════════════════════════════
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: salesbot_api_prod
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    environment:
+      # Override env.production solo si es necesario
+      APP_ENV: production
+      DEBUG: "false"
+      # LLM timeouts que funcionan con Twilio
+      LLM_TIMEOUT: "8"
+      LLM_TIMEOUT_FALLBACK: "16"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - salesbot_network_prod
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    # En producción, NO usar --reload (es solo para desarrollo)
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # RQ Worker (PRODUCCIÓN)
+  # ════════════════════════════════════════════════════════════════════════════
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: salesbot_worker_prod
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+      LLM_TIMEOUT: "8"
+      LLM_TIMEOUT_FALLBACK: "16"
+    networks:
+      - salesbot_network_prod
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    command: python -m app.workers.worker
+
+volumes:
+  postgres_data_prod:
+  redis_data_prod:
+  ollama_data_prod:
+
+networks:
+  salesbot_network_prod:
+    driver: bridge

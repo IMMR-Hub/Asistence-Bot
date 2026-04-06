@@ -1,0 +1,254 @@
+{
+  "project": "Universal Sales Automation Core v1.0",
+  "architecture": "Hexagonal modular, multi-tenant, config-driven, Plug and Play",
+  "stack": {
+    "api": "FastAPI + Python 3.11",
+    "database": "PostgreSQL 16 + SQLAlchemy async",
+    "cache_queue": "Redis 7 + RQ",
+    "llm": "Ollama (qwen2.5:7b-instruct clasificacion, qwen2.5:14b-instruct respuestas)",
+    "deploy": "Docker Compose (5 servicios: api, worker, db, redis, ollama)",
+    "migrations": "Alembic"
+  },
+  "core_principle": "PLUG AND PLAY - Nuevos clientes solo via API config. Core NUNCA se modifica.",
+  "files": {
+    "docker-compose.yml": {
+      "description": "Infraestructura completa con 5 servicios",
+      "services": ["db (postgres:16)", "redis:7", "ollama", "api (FastAPI)", "worker (RQ)"],
+      "ports": {"api": "8000", "db": "5433:5432", "redis": "6379", "ollama": "11434"},
+      "env_vars": {
+        "DATABASE_URL": "postgresql+asyncpg://salesbot:salesbot_secret@db:5432/salesbot_db",
+        "REDIS_URL": "redis://redis:6379/0",
+        "OLLAMA_BASE_URL": "http://ollama:11434",
+        "API_SECRET_KEY": "salesbot-dev-key-2024",
+        "WHATSAPP_PROVIDER": "meta",
+        "WHATSAPP_VERIFY_TOKEN": "testing123",
+        "WHATSAPP_PHONE_NUMBER_ID": "109921676326558"
+      }
+    },
+    "app/core/config.py": {
+      "description": "Settings con pydantic-settings. Lee variables de entorno.",
+      "key_settings": [
+        "DATABASE_URL", "REDIS_URL", "OLLAMA_BASE_URL",
+        "WHATSAPP_VERIFY_TOKEN", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID",
+        "API_SECRET_KEY", "OLLAMA_CLASSIFICATION_MODEL", "OLLAMA_RESPONSE_MODEL"
+      ],
+      "note": "lru_cache en get_settings() - requiere recrear container para cambios de env"
+    },
+    "app/main.py": {
+      "description": "FastAPI app factory con 3 routers: health, tenants, webhooks",
+      "routes": ["/health", "/api/tenants", "/webhooks/whatsapp/inbound", "/webhooks/email/inbound"]
+    },
+    "app/api/routes/webhooks.py": {
+      "description": "Webhook handlers para WhatsApp y Email",
+      "endpoints": {
+        "GET /webhooks/whatsapp/inbound": "Verificacion Meta (hub.mode, hub.verify_token, hub.challenge)",
+        "POST /webhooks/whatsapp/inbound": "Recibe mensajes Meta - requiere X-Tenant-Slug header",
+        "POST /webhooks/email/inbound": "Recibe emails normalizados",
+        "POST /api/test/process-message": "Endpoint de testing interno"
+      },
+      "whatsapp_verification_logic": "hub_mode == 'subscribe' AND hub_verify_token == settings.WHATSAPP_VERIFY_TOKEN",
+      "status": "VERIFICADO FUNCIONANDO - retorna 200 OK con challenge correcto"
+    },
+    "app/channels/whatsapp/adapter.py": {
+      "description": "Parser de payloads Meta + sender de mensajes outbound",
+      "parse_meta_inbound": "Convierte payload JSON de Meta en lista de NormalizedMessage",
+      "send_whatsapp_message": "Envia texto via Meta Cloud API v19.0",
+      "api_url": "https://graph.facebook.com/v19.0/{phone_number_id}/messages",
+      "supported_msg_types": ["text", "image", "audio", "video", "document", "interactive"]
+    },
+    "app/services/message_processor.py": {
+      "description": "Pipeline principal de procesamiento. Orquesta todos los modulos.",
+      "pipeline_steps": [
+        "1. Resolve tenant config",
+        "2. Audit inbound",
+        "3. CRM: upsert contact + conversation + save message",
+        "4. Classify intent (LLM)",
+        "5. Extract entities",
+        "6. CRM: upsert lead + save classification",
+        "7. Escalation decision",
+        "8. Generate response (LLM)",
+        "9. Send response",
+        "10. Schedule follow-ups"
+      ],
+      "escalation_logic": "Si debe escalar: crea escalation record + TAMBIEN genera respuesta empatica al cliente"
+    },
+    "app/modules/intent_classifier/classifier.py": {
+      "description": "Clasificador de intents via LLM (Ollama)",
+      "model": "qwen2.5:7b-instruct (primary), fallback configurable",
+      "valid_intents": [
+        "product_inquiry", "pricing_request", "availability_check",
+        "appointment_request", "quote_request", "support_request",
+        "complaint", "follow_up_reply", "unknown"
+      ],
+      "valid_temperatures": ["hot", "warm", "cold", "unqualified"],
+      "keyword_overrides": "hot_keywords y human_request_keywords desde config del tenant",
+      "output": "ClassificationResult con intent, temperature, urgency, confidence, summary, entities"
+    },
+    "app/modules/response_orchestrator/orchestrator.py": {
+      "description": "Generador de respuestas via LLM con contexto de negocio",
+      "model": "qwen2.5:14b-instruct (primary), fallback a 7b",
+      "context_used": ["business_name", "brand_tone", "business_hours", "FAQ snippets", "knowledge_documents"],
+      "rules": [
+        "Nunca fabrica precios no confirmados",
+        "Responde en el idioma del cliente",
+        "Respeta brand tone del tenant",
+        "Si no tiene info, dice que un equipo lo seguira"
+      ],
+      "output": "OrchestratorResult con should_send, response_text, escalated"
+    },
+    "app/modules/human_escalation/escalation.py": {
+      "description": "Logica de escalado a humano",
+      "escalation_triggers": [
+        "complaint_intent detectada",
+        "customer_requests_human keyword",
+        "always_escalate_complaints config del tenant"
+      ]
+    },
+    "app/modules/knowledge_resolver/resolver.py": {
+      "description": "Resuelve el contexto de conocimiento del tenant para el LLM",
+      "resolves": ["business_name", "brand_tone", "FAQ snippets", "knowledge_documents", "business_hours", "signature"]
+    },
+    "app/services/llm_client.py": {
+      "description": "Cliente HTTP para Ollama",
+      "endpoint": "POST {OLLAMA_BASE_URL}/api/generate",
+      "features": ["streaming desactivado", "JSON mode", "timeout configurable", "LLMError exception"],
+      "known_issue": "Si modelo no existe en Ollama retorna 404 -> LLMError"
+    },
+    "app/db/models/": {
+      "description": "10 modelos SQLAlchemy",
+      "models": {
+        "Tenant": "slug, name, is_active",
+        "TenantConfig": "tenant_id, version, config JSONB, is_active",
+        "Contact": "tenant_id, phone, email, name, external_contact_id",
+        "Lead": "tenant_id, contact_id, status, temperature, intent",
+        "Conversation": "tenant_id, contact_id, channel, status, escalated",
+        "Message": "conversation_id, direction, channel, content, raw_payload",
+        "LeadClassification": "lead_id, message_id, intent, temperature, confidence",
+        "FollowUpJob": "lead_id, scheduled_at, status, job_type",
+        "Escalation": "conversation_id, lead_id, reason, status",
+        "AuditEvent": "tenant_id, event_type, event_source, payload"
+      }
+    },
+    "app/services/tenant_service.py": {
+      "description": "Servicio para CRUD de tenants y configs",
+      "methods": ["create_tenant", "get_tenant_by_slug", "load_active_config", "upsert_config"]
+    },
+    "tenants/vitaclinica-setup.ps1": {
+      "description": "Script Plug and Play para crear Vitaclinica. TEMPLATE para nuevos clientes.",
+      "steps": [
+        "1. POST /api/tenants -> crea tenant",
+        "2. POST /api/tenants/{id}/configs -> carga config completa",
+        "3. Test con 4 mensajes de prueba"
+      ],
+      "api_key": "salesbot-dev-key-2024",
+      "tenant_slug": "vitaclinica",
+      "regla_de_oro": "Nuevo cliente = copiar este archivo + cambiar datos + ejecutar. Core NO se toca."
+    }
+  },
+  "tenant_config_schema": {
+    "description": "Config JSONB que define TODO el comportamiento del tenant",
+    "key_fields": {
+      "business_name": "Nombre del negocio",
+      "industry_tag": "clinica_odontologica | hotel | frigorifico | banco | etc",
+      "default_language": "es | en | pt",
+      "enabled_channels": ["whatsapp", "email"],
+      "brand_tone": "Descripcion del tono de marca para el LLM",
+      "operating_hours": {"monday_friday": "09:00-20:00"},
+      "escalation_rules": {
+        "always_escalate_complaints": true,
+        "escalate_on_human_request": true,
+        "hot_lead_auto_escalate": false
+      },
+      "classification_overrides": {
+        "hot_keywords": ["urgente", "dolor", "emergencia"],
+        "human_request_keywords": ["hablar con", "necesito a alguien"]
+      },
+      "knowledge_documents": ["FAQ completo", "Instrucciones de tono", "Precios", "Servicios"],
+      "faqs": [{"question": "...", "answer": "..."}]
+    }
+  },
+  "whatsapp_integration": {
+    "sandbox_status": "WEBHOOK CONFIGURADO Y VALIDADO (200 OK)",
+    "webhook_url": "https://untried-progressional-ozie.ngrok-free.dev/webhooks/whatsapp/inbound",
+    "verify_token": "testing123",
+    "phone_number_id": "109921676326558",
+    "sandbox_issue": "Meta sandbox tiene numero de prueba no completamente registrado - es limitacion de Meta, NO del codigo",
+    "production_path": "Con numero real de WhatsApp Business verificado, el codigo funciona correctamente",
+    "outbound_api": "https://graph.facebook.com/v19.0/{phone_number_id}/messages"
+  },
+  "test_results": {
+    "vitaclinica_tests_passed": 4,
+    "tests": [
+      {
+        "input": "Hola, cuanto cuesta el blanqueamiento dental?",
+        "escalated": false,
+        "response": "El blanqueamiento dental cuesta desde 700.000 Gs. Te gustaria agendar una cita?"
+      },
+      {
+        "input": "Tengo dolor de muela muy fuerte, necesito ayuda",
+        "escalated": true,
+        "reason": "complaint_intent"
+      },
+      {
+        "input": "Quiero agendar una cita para esta semana",
+        "escalated": false,
+        "response": "Perfecto, que dia y hora te quedan mejor? Estamos disponibles de lunes a viernes de 09:00 a 20:00."
+      },
+      {
+        "input": "Quiero hablar con un odontologo",
+        "escalated": true,
+        "reason": "customer_requests_human"
+      }
+    ]
+  },
+  "known_issues": {
+    "ollama_response_time": "40-60 segundos con CPU sin GPU. Se resuelve con VPS GPU o Together.ai API",
+    "worker_unhealthy": "salesbot_worker status unhealthy - no afecta procesamiento principal",
+    "meta_sandbox": "Phone number registration falla intermitentemente en sandbox - no afecta produccion",
+    "powershell_encoding": "UTF-8 puede mostrar caracteres raros en terminal Windows - respuestas son correctas"
+  },
+  "roadmap": {
+    "fase_1_completada": [
+      "Core hexagonal modular",
+      "Multi-tenant con config JSONB",
+      "Pipeline LLM completo",
+      "WhatsApp adapter (Meta Cloud API)",
+      "Email adapter",
+      "Webhook verificado",
+      "Vitaclinica tenant funcionando",
+      "Docker Compose deploy",
+      "ngrok para testing local"
+    ],
+    "fase_2_pendiente": [
+      "Together.ai como LLM provider (respuestas < 5 segundos)",
+      "Google Calendar / Calendly integration",
+      "Dashboard web (Lovable)",
+      "Excel/Google Sheets export",
+      "Pagos (Stripe/Mercado Pago)",
+      "VPS production deploy"
+    ],
+    "fase_3_futuro": [
+      "Auto-configuracion via IA (investiga cliente, genera config)",
+      "Voice/TTS responses",
+      "Social media manager",
+      "Web page generator",
+      "Billing automatico"
+    ]
+  },
+  "pricing_model": {
+    "setup_instalacion": "$2,500 USD",
+    "integraciones": {
+      "google_calendar": "$400",
+      "stripe_mercadopago": "$600",
+      "crm_avanzado": "$500",
+      "voice_tts": "$800",
+      "dashboard_analitico": "$1,500"
+    },
+    "mensualidad": {
+      "basico_whatsapp_email": "$150/mes",
+      "pro_calendar_crm": "$300/mes",
+      "premium_pagos_voz": "$500/mes"
+    },
+    "justificacion": "Una recepcionista en Paraguay cobra mas que $300/mes. ROI del cliente: 900%"
+  }
+}

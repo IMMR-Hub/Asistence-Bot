@@ -1,0 +1,141 @@
+╔════════════════════════════════════════════════════════════════╗
+║   COMO INICIAR LA APLICACION - GUIA SUPER SIMPLE              ║
+╚════════════════════════════════════════════════════════════════╝
+
+OPCION 1: CON UN SOLO CLIC (LA MAS FACIL)
+═══════════════════════════════════════════
+
+1. Abre Explorador de Archivos (carpeta)
+2. Navega a: C:\Users\Daniel\universal-sales-automation-core
+3. Busca el archivo: ARRANCA.bat
+4. DOBLE CLIC en ARRANCA.bat
+5. ¡Listo! Se abre una ventana negra y lo hace todo automáticamente
+6. Espera a ver "✅ ¡TODO LISTO!"
+7. Presiona cualquier tecla para cerrar
+
+═════════════════════════════════════════════════════════════════
+
+OPCION 2: CON PYTHON (ALTERNATIVA)
+═══════════════════════════════════
+
+Requisito previo: Tener Python instalado
+Descárgalo desde: https://www.python.org/downloads/
+
+1. Abre Explorador de Archivos
+2. Navega a: C:\Users\Daniel\universal-sales-automation-core
+3. Busca el archivo: START.py
+4. DOBLE CLIC en START.py
+5. ¡Listo! Se abre una ventana y lo hace todo
+6. Espera a ver "✅ ¡TODO LISTO!"
+7. Presiona ENTER para cerrar
+
+═════════════════════════════════════════════════════════════════
+
+VISUAL PASO A PASO
+══════════════════
+
+PASO 1: Abre Explorador de Archivos
+───────────────────────────────────
+Windows + E
+    ↓
+Se abre una ventana con carpetas
+
+PASO 2: Navega a la carpeta
+──────────────────────────
+En la barra de direcciones (arriba), escribe o pega:
+C:\Users\Daniel\universal-sales-automation-core
+
+    ↓
+Presiona ENTER
+
+PASO 3: Busca el archivo
+──────────────────────
+Verás muchos archivos. Busca:
+
+    🔍 ARRANCA.bat
+
+PASO 4: DOBLE CLIC
+─────────────────
+Haz doble clic en ARRANCA.bat
+
+    ↓
+Se abre una ventana negra (consola)
+
+PASO 5: Espera
+───────────
+Verás cosas como:
+
+    Verificando Docker...
+    ✅ Docker encontrado
+    Iniciando servicios...
+    ...
+
+PASO 6: Completo
+────────────
+Cuando veas:
+
+    ================================
+    ✅ ¡TODO LISTO!
+    ================================
+    
+    🌐 Tu aplicación:
+       http://localhost:8000
+
+Significa que está funcionando! 🎉
+
+═════════════════════════════════════════════════════════════════
+
+¿QUE SIGNIFICAN ESOS NUMEROS Y SIGNOS?
+═══════════════════════════════════════
+
+✅ = Bien, funcionó
+❌ = Error, algo no funcionó
+⏳ = Esperando
+... = Cargando
+
+═════════════════════════════════════════════════════════════════
+
+¿DONDE ACCEDO DESPUES?
+══════════════════════
+
+Abre tu navegador (Chrome, Edge, Firefox, etc) y ve a:
+
+    http://localhost:8000
+
+Verás tu aplicación funcionando!
+
+═════════════════════════════════════════════════════════════════
+
+¿QUE PASA SI ME DA ERROR?
+═════════════════════════
+
+Error: "Docker no está instalado"
+→ Descarga Docker desde: https://www.docker.com/products/docker-desktop
+
+Error: "No se encuentra docker compose"
+→ Docker Compose debería venir con Docker
+→ Intenta reinstalar Docker
+
+Error: "Puerto 8000 ya está en uso"
+→ Algo más está usando ese puerto
+→ Intenta reiniciar la computadora
+
+Error: Otra cosa
+→ Toma captura de pantalla del error
+→ Mándamela y te ayudo
+
+═════════════════════════════════════════════════════════════════
+
+RESUMEN FINAL
+═════════════
+
+    1. Abre Explorador de Archivos
+    2. Ve a: C:\Users\Daniel\universal-sales-automation-core
+    3. Busca ARRANCA.bat
+    4. Doble clic
+    5. Espera a "✅ ¡TODO LISTO!"
+    6. Abre navegador en: http://localhost:8000
+
+¡Eso es todo! 🎉
+
+═════════════════════════════════════════════════════════════════
